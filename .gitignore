@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Data, checkpoints, logs
+data/
+*.bin
+*.pt
+*.pth
+*.ckpt
+checkpoints/
+logs/
+
+# OS / editors
+.DS_Store
+.vscode/
+.idea/
