@@ -1,0 +1,16 @@
+# API container: FastAPI + the GPT on CPU (Docker on macOS has no access to the Apple GPU).
+FROM python:3.12-slim
+
+WORKDIR /app
+# CPU-only torch wheel: ~200 MB instead of ~2 GB with CUDA.
+RUN pip install --no-cache-dir torch==2.15.0 --index-url https://download.pytorch.org/whl/cpu \
+ && pip install --no-cache-dir fastapi==0.165.0 "uvicorn[standard]==0.54.0" numpy
+
+COPY gpt/model.py gpt/
+COPY franko/bpe.py franko/
+COPY web/server.py web/
+
+# Checkpoints are mounted here (see compose.yaml), not baked into the image.
+ENV MODELS_DIR=/models/shakespeare:/models/franko DEVICE=cpu
+EXPOSE 8000
+CMD ["uvicorn", "server:create_app", "--factory", "--app-dir", "web", "--host", "0.0.0.0", "--port", "8000"]

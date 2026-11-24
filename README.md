@@ -1,22 +1,20 @@
 # mini-gpt
 
 Building and training a small GPT-style language model from scratch, step by step:
-micrograd → bigrams → MLP → GPT → custom dataset → web chat. Everything trains locally on a
+micrograd → bigrams → MLP → GPT → own tokenizer on Ivan Franko → web chat. Everything trains locally on a
 MacBook Air M2 via the Apple GPU (MPS).
 
 ## Structure
 
-| Folder | Stage |
-|---|---|
-| `00_setup` | Environment check and CPU vs MPS benchmark |
-| `01_micrograd` | Own autograd engine and MLP |
-| `02_bigram` | Character-level bigram model |
-| `03_mlp` | MLP with embeddings (Bengio 2003) |
-| `04_gpt` | Transformer (mini-GPT) on Tiny Shakespeare |
-| `05_custom` | Ivan Franko corpus, own BPE tokenizer, GPT trained on BPE vs characters |
-| `06_web` | Web chat with the models: FastAPI + streaming UI, Docker (`docker compose up`) |
-
-Jupyter notebooks are for experiments, `.py` scripts hold the final code.
+| Step | Folder | What's inside |
+|---|---|---|
+| 0 | `setup` | Environment check and CPU vs MPS benchmark |
+| 1 | `micrograd` | Own autograd engine and MLP |
+| 2 | `bigram` | Character-level bigram model |
+| 3 | `mlp` | MLP with embeddings (Bengio 2003) |
+| 4 | `gpt` | Transformer (mini-GPT) on Tiny Shakespeare |
+| 5 | `franko` | Ivan Franko corpus, own BPE tokenizer, GPT trained on BPE vs characters |
+| 6 | `web` | Web chat with the models: FastAPI + streaming UI, Docker (`docker compose up`) |
 
 ## Setup (macOS, Apple Silicon)
 
@@ -34,8 +32,8 @@ pip install -r requirements.txt
 Check the environment and run the benchmark:
 
 ```bash
-python 00_setup/check_env.py   # MPS available: True
-python 00_setup/benchmark.py   # CPU vs MPS matmul timing
+python setup/check_env.py   # MPS available: True
+python setup/benchmark.py   # CPU vs MPS matmul timing
 ```
 
 ## Device conventions
