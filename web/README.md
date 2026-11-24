@@ -19,6 +19,7 @@ BARD:
 
 ```bash
 pip install -r requirements.txt
+python web/weights.py download  # trained models from the latest release, unless you trained your own
 python web/server.py            # http://localhost:8000
 ```
 
@@ -35,6 +36,7 @@ never seen. The BPE model is byte-level and accepts any text.
 ## Run in Docker (two containers)
 
 ```bash
+python web/weights.py download
 docker compose up --build          # http://localhost:8080
 ```
 
