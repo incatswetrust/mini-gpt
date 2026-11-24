@@ -18,7 +18,7 @@ def main():
     parser.add_argument("--temperature", type=float, default=0.8)
     parser.add_argument("--top_k", type=int, default=None)
     parser.add_argument("--seed", type=int, default=None)
-    parser.add_argument("--ckpt", default=os.path.join(HERE, "out", "main", "ckpt.pt"))
+    parser.add_argument("--ckpt", default=os.path.join(HERE, "out", "main", "best.pt"))
     parser.add_argument("--device", default="mps" if torch.backends.mps.is_available() else "cpu")
     args = parser.parse_args()
 

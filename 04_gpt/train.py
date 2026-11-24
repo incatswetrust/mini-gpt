@@ -4,8 +4,9 @@
   python 04_gpt/train.py --config main           # ~10M params, the real run
   python 04_gpt/train.py --config main --resume  # continue from out/main/ckpt.pt
 
-Writes to 04_gpt/out/<config>/: ckpt.pt (every ckpt_interval steps, on Ctrl+C
-and at the end), log.csv (train/val loss), loss.png.
+Writes to 04_gpt/out/<config>/: ckpt.pt (latest state: every ckpt_interval
+steps, on Ctrl+C and at the end), best.pt (lowest val loss so far, updated at
+each eval that improves it), log.csv (train/val loss), loss.png.
 """
 import argparse
 import csv
@@ -134,6 +135,7 @@ def main():
     out_dir = args.out_dir or os.path.join(HERE, "out", args.config)
     os.makedirs(out_dir, exist_ok=True)
     ckpt_path, log_path = os.path.join(out_dir, "ckpt.pt"), os.path.join(out_dir, "log.csv")
+    best_path = os.path.join(out_dir, "best.pt")
     device = args.device
 
     tok, train_data, val_data = load_splits()
@@ -180,7 +182,11 @@ def main():
                     csv.writer(f).writerow([step, f"{losses['train']:.4f}", f"{losses['val']:.4f}", f"{lr:.2e}", f"{elapsed:.0f}"])
                 print(f"step {step:5d}  train {losses['train']:.4f}  val {losses['val']:.4f}  lr {lr:.2e}  "
                       f"{ms:.0f} ms/iter  {elapsed / 60:.1f} min")
-                best_val = min(best_val, losses["val"])
+                if losses["val"] < best_val:
+                    # Val starts rising once the model overfits (main: after ~1750 steps),
+                    # so keep the best weights separately from the latest ones.
+                    best_val = losses["val"]
+                    save_checkpoint(best_path, model, optimizer, step, best_val, cfg, tok, generator, elapsed)
                 t_last, last_eval_step = time.time(), step
             if step == cfg["max_iters"]:
                 break
@@ -200,7 +206,7 @@ def main():
 
     save_checkpoint(ckpt_path, model, optimizer, step, best_val, cfg, tok, generator, time.time() - t0)
     plot_log(log_path, os.path.join(out_dir, "loss.png"), f"GPT {args.config}: {model.num_params() / 1e6:.2f}M params")
-    print(f"\nsaved {ckpt_path}, best val {best_val:.4f}")
+    print(f"\nsaved {ckpt_path}; best val {best_val:.4f} in {best_path}")
 
     context = torch.tensor([tok.encode("\n")], device=device)
     sample = model.generate(context, 300, temperature=0.8, generator=torch.Generator().manual_seed(42))
