@@ -93,7 +93,7 @@ def test_dialogue_prompt():
     msgs = [{"role": "user", "content": "— Добрий день."}, {"role": "model", "content": "Здорові були!"}]
     req = GenerateRequest(model="x", messages=msgs)
     prompt, kept = build_prompt(req, block_size=100, chat_format="dialogue")
-    assert "".join(prompt) == "— Добрий день.\n\n— Здорові були!\n\n— " and kept == 2
+    assert "".join(prompt) == "— Добрий день.\n\n— Здорові були!\n\n—" and kept == 2
 
 
 @pytest.fixture(scope="module")

@@ -22,7 +22,7 @@ Franko's prose puts each line of dialogue in its own paragraph after a dash:
 
     — Добрий день.
 
-    — <the model writes here, until the paragraph ends>
+    —<the model writes here (starting with a space), until the paragraph ends>
 """
 import argparse
 import asyncio
@@ -152,7 +152,10 @@ def build_prompt(req, block_size, chat_format="play", encode=list):
     Returns (token ids, number of turns kept).
     """
     if chat_format == "dialogue":
-        header, turns = "— ", [dialogue_line(m.content) for m in req.messages]
+        # The prompt ends with the dash alone: BPE glues a space to the word after
+        # it (" Ні"), so a trailing bare space is a token the model has hardly
+        # ever seen, and it answers with gibberish. The model adds the space itself.
+        header, turns = "—", [dialogue_line(m.content) for m in req.messages]
     else:
         header = f"{req.model_name}:\n"
         turns = [speech(req.user_name if m.role == "user" else req.model_name, m.content) for m in req.messages]
@@ -216,6 +219,8 @@ def create_app(models_dir=None, device=None):
                     # Decode the whole reply: a BPE token can be half of a
                     # 2-byte Cyrillic letter, which decodes only with its other half.
                     reply = m.decode(tokens)
+                    if m.chat_format == "dialogue":
+                        reply = reply.lstrip(" ")  # the space after the dash
                     end = reply.find(END_OF_TURN, sent)
                     if end != -1:  # the model finished its speech
                         if end > sent:
