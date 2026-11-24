@@ -10,21 +10,47 @@ ln(65) = 4.17.
 |---|---|---|---|---|
 | Bigram (`bigram.py`, 5000 steps) | 4 225 | 2.458 | 2.477 | 16 s |
 | **GPT `small`** (4 layers, 4 heads, 128, block 64) | 0.82M | 1.285 | **1.534** | 20 min, CPU |
-| GPT `main` (6 layers, 6 heads, 384, block 256) | 10.79M | — | — | **not run yet: needs the Mac** |
+| **GPT `main`** (6 layers, 6 heads, 384, block 256, dropout 0.2) | 10.79M | 1.105 | **1.477** (step 1750) | 58 min, M2 MPS |
 
 Target for the stage: val ≈ 1.5 or lower. `small` gets close (1.534);
-`main` is expected to land around 1.47 (nanoGPT's result with the same
-settings) and has to be trained on the M2.
+`main` reaches **1.477** — the same as nanoGPT's ~1.47 with these settings.
 
-The dev box (x86, 2 cores, ~1.6 GB free RAM) can't train `main`: a smoke
-test with batch 16 ran out of memory. On a Mac with 8+ GB of unified memory
-it fits; time per step is unknown until it's run there.
+`small` was trained on the old dev box (x86, 2 cores), which couldn't fit
+`main` in memory. On the MacBook Air M2, `main` runs at ~1.2–1.4 s/iter
+(batch 64 × 256 tokens) plus ~2 min per eval; `small` runs at 33 ms/iter
+on MPS.
 
 ![small loss](loss_small.png)
 
 Initial loss 4.21 (expected 4.17). Train and val separate after ~500 steps
 and the gap grows to 0.25 by the end: `small` runs without dropout and
 starts fitting the training text. `main` has dropout 0.2 for this reason.
+
+![main loss](loss_main.png)
+
+`main` overfits anyway, and much harder: the model has 10.8M parameters
+for 1M training characters, so it can memorize a large part of the text.
+
+| step | train | val | gap |
+|---|---|---|---|
+| 500 | 1.543 | 1.727 | 0.18 |
+| 1000 | 1.275 | 1.531 | 0.26 |
+| **1750** | 1.105 | **1.477** | 0.37 |
+| 2500 | 0.961 | 1.506 | 0.54 |
+| 3000 | 0.868 | 1.543 | 0.67 |
+
+Up to step ~1750 the gap grows but val still falls — memorizing and
+generalizing at the same time. After that train keeps falling and val
+rises: every further step only fits the training text. The run was stopped
+at step 3116 of 5000 since the rest could only make val worse.
+
+The original `train.py` kept only the latest weights, so the last
+checkpoint was the overfitted one. Now it also writes `best.pt` whenever
+val improves (early stopping by checkpoint), and `generate.py` loads
+`best.pt` by default. In this run the best saved weights are from step 2000
+(val 1.484; checkpoints were every 500 steps, so step 1750 itself wasn't
+kept). Ways to overfit less: more dropout (0.25–0.3), fewer `max_iters`
+(~2000), or more data — which is the point of stage 5.
 
 ## Samples
 
@@ -52,6 +78,28 @@ That shalt married 'now some consented.
 Speaker names in capitals with a colon, line breaks in verse-like lengths,
 mostly real words, archaic forms (*shalt*, *I'll*). The meaning doesn't
 hold together beyond a line — 64 characters of context is about one line.
+
+GPT `main` (step 2000, val 1.484), prompt `\n`, temperature 0.8, seed 42:
+
+```
+KING LEWIS XI:
+No, my lord; I'll know no longer than means.
+
+KING EDWARD IV:
+I know not what you do.
+
+GLOUCESTER:
+Well, well, well, and yet fly to the boy and no sudden:
+Prove we can bring his warning well-should spur awhile.
+If this gentleman, thou didst make a quarrel,
+And will not be a man to be patient to speak
+So our penitence of cares, of it.
+```
+
+With 256 characters of context the model keeps a scene together: Edward IV
+and Gloucester are characters of the same history plays, the short reply
+answers the previous line, and sentences run over several verse lines
+instead of breaking off after one.
 
 ### Temperature and top-k
 

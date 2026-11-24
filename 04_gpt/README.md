@@ -44,8 +44,9 @@ python 04_gpt/generate.py --prompt "ROMEO:" --temperature 0.8 --max_tokens 500
 python 04_gpt/generate.py --ckpt 04_gpt/out/small/ckpt.pt --top_k 10
 ```
 
-Outputs go to `04_gpt/out/<config>/` (git-ignored): `ckpt.pt`, `log.csv`,
-`loss.png`. A checkpoint is written every 500 steps for `main` (1000 for
+Outputs go to `04_gpt/out/<config>/` (git-ignored): `ckpt.pt` (latest state,
+for `--resume`), `best.pt` (lowest val loss, used by `generate.py` by default),
+`log.csv`, `loss.png`. A checkpoint is written every 500 steps for `main` (1000 for
 `small`), on Ctrl+C, and at the end; `--resume` continues with the same
 optimizer state, lr schedule position and data order.
 
