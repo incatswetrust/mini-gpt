@@ -127,6 +127,16 @@ class BPETokenizer:
         return cls({(a, b): idx for a, b, idx in data["merges"]})
 
 
+def make_tokenizer(meta):
+    """(encode, decode) for a tokenizer described as in prepare.py's meta.json:
+    {"type": "bpe", "merges": [[a, b, id], ...]} or {"type": "char", "chars": [...]}."""
+    if meta["type"] == "char":
+        stoi = {c: i for i, c in enumerate(meta["chars"])}
+        return (lambda s: [stoi[c] for c in s]), (lambda ids: "".join(meta["chars"][i] for i in ids))
+    tok = BPETokenizer({(a, b): i for a, b, i in meta["merges"]})
+    return tok.encode, tok.decode
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--vocab_size", type=int, default=4000)

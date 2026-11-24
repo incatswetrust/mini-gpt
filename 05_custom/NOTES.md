@@ -89,3 +89,94 @@ Characters per token on 1M characters (more is cheaper):
   Ukrainian, but it's useless for English (1.19: barely better than bytes).
   The Franko number is slightly flattering — the tokenizer was trained on
   this text — but the gap to GPT-4 is far bigger than that effect.
+
+## 5.3 Training: BPE vs characters
+
+```bash
+python 05_custom/prepare.py --tokenizer bpe4000   # -> data/bpe4000/{train,val}.bin, meta.json
+python 05_custom/prepare.py --tokenizer char
+python 05_custom/train.py --data bpe4000          # ~75 min on the M2 Air
+python 05_custom/train.py --data char             # ~67 min
+python 05_custom/compare_runs.py                  # -> bpc_compare.png
+python 05_custom/generate.py --data bpe4000 --seed 1 --chars 500
+```
+
+The stage 4 model, unchanged: 6 layers, 6 heads, 384 dims, context 256
+tokens, dropout 0.2, AdamW with cosine lr 1e-3 → 1e-4, 3000 steps of 64
+sequences. Only the vocabulary differs, so only the token embedding and the
+output layer change size.
+
+**Validation split.** The corpus is ordered by work, so the last 10% would
+be a few works of one kind. Instead it is cut into 100 pieces at paragraph
+boundaries and every 10th piece goes to val (770K characters). Both runs use
+exactly the same train and val text.
+
+**Comparing across tokenizers.** Loss per token can't be compared: a BPE
+token is ~2.8 characters, so predicting it is harder. Both runs report val
+loss in **bits per character** of the same text: loss × tokens / characters
+/ ln 2.
+
+**Memory.** With a 4000-token output, a batch of 64 pushed the 8 GB Air into
+swap and training stalled. Each step is now two micro-batches of 32 whose
+gradients add up (gradient accumulation): the same update, half the peak
+memory.
+
+| | BPE, 4000 tokens | characters, 143 tokens |
+|---|---|---|
+| parameters | 13.81M | 10.85M |
+| context of 256 tokens ≈ | 720 characters | 256 characters |
+| speed | 1.32 s/step | 1.19 s/step |
+| time, 3000 steps | 73.5 min | 66.7 min |
+| **best val, bits/char** | **2.052** | 2.176 |
+| train − val gap, bits/char | 0.37 | 0.17 |
+
+![val bits per character](bpc_compare.png)
+
+- **BPE wins by 0.12 bits/char**, and it gets there sooner: after 30 minutes
+  it is where the character model ends after 67.
+- The reason is context. Same 256 positions, but a BPE position is a whole
+  word or a large piece of one, so the model sees ~3× more text and spends
+  its attention on relations between words instead of spelling them out.
+- The cost: the vocabulary adds 3M parameters, and the gap between train and
+  val is twice as big. A rare word gets its own token and is seen only a few
+  times, so it is easier to memorize. Val was still falling at step 3000 for
+  both, so `best.pt` is the last step in each run.
+
+Loss curves of each run: [BPE](loss_bpe4000.png), [characters](loss_char.png).
+
+### Samples
+
+500 characters from a blank line, temperature 0.8, seed 1.
+
+BPE:
+
+```
+— Ну, то, а ти хіба ж знаєш, що я тобі скажу? — запитав він спокійно.
+
+— Ні, не здурілиш. Хотіли мене до матері, він обняв її і дав мені за все своє промовище.
+
+— Ну, ну, ну, на мене! — сказав Шлендріян, уклонившися обома руками, благаючи зроблющого, що я не міг доторкнутися!
+
+— Біда, нечистися! — сказав Лімбах. — Прийду до суду. Я на те не буду нічого від них.
+
+— За той час! — сказав Мендель, кланяючись. — То я не догадувався, що треба.
+```
+
+Characters:
+
+```
+Замовк.
+
+— Пане, — говорив далі і випивши свої ями, але напівперед до рук.
+
+— Слухайте мені.
+
+— Так, так, які не знати такого. Знайшов при лихорім оповіданні. Мій господар висилував шибний коротко до ради, правдивий староста, що значив се значити якогось багато і своїх пропадок мене до догори не було замуж до неї, вони вміли сказати, що сей находить і бачу, сирота вислали до собою від нього припустили його, коли поки ту ледве мусили відповісти в відпрошеннім скарбі.
+```
+
+Neither is coherent beyond a sentence, but the difference shows. The BPE
+model writes almost only real words, keeps dialogue short and attributes it
+to Franko's own characters (Шлендріян, Мендель, Лімбах). The character
+model invents words (`лихорім`, `висилував`, `напівперед`) and runs a
+sentence on for a paragraph: inside 256 characters it can't see where the
+sentence started.

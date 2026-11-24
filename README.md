@@ -13,7 +13,7 @@ MacBook Air M2 via the Apple GPU (MPS).
 | `02_bigram` | Character-level bigram model |
 | `03_mlp` | MLP with embeddings (Bengio 2003) |
 | `04_gpt` | Transformer (mini-GPT) on Tiny Shakespeare |
-| `05_custom` | Custom corpus and BPE tokenizer |
+| `05_custom` | Ivan Franko corpus, own BPE tokenizer, GPT trained on BPE vs characters |
 | `06_web` | Web chat with the models: FastAPI + streaming UI, Docker (`docker compose up`) |
 
 Jupyter notebooks are for experiments, `.py` scripts hold the final code.
