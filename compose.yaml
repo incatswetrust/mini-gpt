@@ -3,16 +3,16 @@ services:
   api:
     build:
       context: .
-      dockerfile: 06_web/Dockerfile.api
+      dockerfile: web/Dockerfile.api
     volumes:
-      - ./04_gpt/out:/models/shakespeare:ro   # trained checkpoints: <run>/best.pt
-      - ./05_custom/out:/models/franko:ro
+      - ./gpt/out:/models/shakespeare:ro   # trained checkpoints: <run>/best.pt
+      - ./franko/out:/models/franko:ro
     restart: unless-stopped
 
   web:
     build:
       context: .
-      dockerfile: 06_web/Dockerfile.web
+      dockerfile: web/Dockerfile.web
     ports:
       - "8080:80"
     depends_on:
