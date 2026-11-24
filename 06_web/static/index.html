@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>mini-gpt chat</title>
+  <link rel="stylesheet" href="static/style.css">
+  <script>
+    // Apply the saved theme before first paint, so there is no flash.
+    try { const t = localStorage.getItem("minigpt.theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+  </script>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a1 1 0 0 1 1-1h9"/></symbol>
+    <symbol id="i-redo" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1.5"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
+    <symbol id="i-bulb" viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16h.01"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></symbol>
+  </defs>
+</svg>
+
+<div class="app">
+  <aside class="sidebar" id="sidebar">
+    <header class="brand">
+      <h1>mini<span>gpt</span></h1>
+      <button class="icon-btn" id="theme-btn" title="Toggle theme" aria-label="Toggle theme">
+        <svg><use href="#i-moon"/></svg>
+      </button>
+    </header>
+
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-tab="chats" role="tab" aria-selected="true" title="Chats"><svg><use href="#i-chat"/></svg></button>
+      <button class="tab" data-tab="settings" role="tab" aria-selected="false" title="Settings"><svg><use href="#i-sliders"/></svg></button>
+    </nav>
+
+    <section class="panel" id="panel-chats">
+      <button class="new-chat" id="new-chat"><svg><use href="#i-plus"/></svg>New chat</button>
+      <div class="section-title">Conversations</div>
+      <ul class="chat-list" id="chat-list"></ul>
+    </section>
+
+    <section class="panel" id="panel-settings" hidden>
+      <div class="section-title">Model</div>
+      <div class="model-list" id="model-list"><p class="muted small">Loading models…</p></div>
+
+      <div class="section-title">Sampling</div>
+      <label class="field">
+        <span>Temperature <output id="temperature-out"></output></span>
+        <input type="range" id="temperature" min="0.1" max="2" step="0.05">
+      </label>
+      <label class="field">
+        <span>Top-k <output id="top_k-out"></output></span>
+        <input type="range" id="top_k" min="0" max="65" step="1">
+      </label>
+      <label class="field">
+        <span>Max tokens <output id="max_tokens-out"></output></span>
+        <input type="range" id="max_tokens" min="20" max="1000" step="10">
+      </label>
+      <label class="field inline">
+        <span>Seed</span>
+        <input type="number" id="seed" placeholder="random">
+      </label>
+
+      <div class="section-title">Speakers</div>
+      <div class="field-row">
+        <label class="field"><span>You</span><input type="text" id="user_name"></label>
+        <label class="field"><span>Model</span><input type="text" id="model_name"></label>
+      </div>
+      <p class="muted small">The model continues a play: each message becomes a speech under these names, and the reply ends when the model starts a new speech.</p>
+    </section>
+  </aside>
+  <div class="scrim" id="scrim"></div>
+
+  <main class="main">
+    <header class="topbar">
+      <button class="icon-btn menu-btn" id="menu-btn" aria-label="Open sidebar"><svg><use href="#i-menu"/></svg></button>
+      <div class="crumbs" id="crumbs"></div>
+    </header>
+
+    <div class="messages" id="messages" aria-live="polite"></div>
+
+    <footer class="composer-wrap">
+      <form class="composer" id="composer">
+        <textarea id="input" rows="1" placeholder="Speak, and the model answers in verse…  (Enter to send, Shift+Enter for a new line)"></textarea>
+        <button type="submit" class="send" id="send" aria-label="Send"><svg><use href="#i-send"/></svg></button>
+      </form>
+      <div class="stats" id="stats">
+        <span id="stat-speed">— tok/s</span>
+        <span class="ctx"><span class="ctx-bar"><span id="ctx-fill"></span></span><span id="stat-ctx">context —</span></span>
+      </div>
+    </footer>
+  </main>
+</div>
+
+<script src="static/app.js"></script>
+</body>
+</html>
