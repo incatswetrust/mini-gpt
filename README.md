@@ -1,7 +1,7 @@
 # mini-gpt
 
 Building and training a small GPT-style language model from scratch, step by step:
-micrograd → bigrams → MLP → GPT → custom dataset. Everything trains locally on a
+micrograd → bigrams → MLP → GPT → custom dataset → web chat. Everything trains locally on a
 MacBook Air M2 via the Apple GPU (MPS).
 
 ## Structure
@@ -14,6 +14,7 @@ MacBook Air M2 via the Apple GPU (MPS).
 | `03_mlp` | MLP with embeddings (Bengio 2003) |
 | `04_gpt` | Transformer (mini-GPT) on Tiny Shakespeare |
 | `05_custom` | Custom corpus and BPE tokenizer |
+| `06_web` | Web chat with the models: FastAPI + streaming UI, Docker (`docker compose up`) |
 
 Jupyter notebooks are for experiments, `.py` scripts hold the final code.
 

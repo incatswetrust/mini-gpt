@@ -1,0 +1,4 @@
+# Web container: the static chat UI, with /api proxied to the api container.
+FROM nginx:1.27-alpine
+COPY 06_web/nginx.conf /etc/nginx/conf.d/default.conf
+COPY 06_web/static /usr/share/nginx/html
