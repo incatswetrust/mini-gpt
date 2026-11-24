@@ -5,7 +5,8 @@ services:
       context: .
       dockerfile: 06_web/Dockerfile.api
     volumes:
-      - ./04_gpt/out:/models:ro   # trained checkpoints: <name>/best.pt
+      - ./04_gpt/out:/models/shakespeare:ro   # trained checkpoints: <run>/best.pt
+      - ./05_custom/out:/models/franko:ro
     restart: unless-stopped
 
   web:

@@ -22,9 +22,15 @@ pip install -r requirements.txt
 python 06_web/server.py            # http://localhost:8000
 ```
 
-The server loads every `04_gpt/out/<name>/best.pt` (or `ckpt.pt` when there
-is no `best.pt`) at startup; set `MODELS_DIR` to look elsewhere and `DEVICE`
-to force `cpu`/`mps`.
+The server loads every `<run>/best.pt` (or `ckpt.pt` when there is no
+`best.pt`) in `04_gpt/out` and `05_custom/out` at startup, as
+`shakespeare-<run>` and `franko-<run>`. Set `MODELS_DIR` (dirs separated by
+`:`) to look elsewhere and `DEVICE` to force `cpu`/`mps`.
+
+Each corpus gets the chat format of its own dialogue. Shakespeare: a play,
+each turn a speech under `YOU:` / `BARD:`. Franko: each line of dialogue is a
+paragraph starting with `— `. Character models reject characters they have
+never seen. The BPE model is byte-level and accepts any text.
 
 ## Run in Docker (two containers)
 
@@ -36,7 +42,7 @@ docker compose up --build          # http://localhost:8080
 browser ──► web (nginx)  static UI; /api/* proxied without buffering (SSE)
                │
                ▼
-            api (FastAPI + torch CPU)  checkpoints mounted read-only from 04_gpt/out
+            api (FastAPI + torch CPU)  checkpoints mounted read-only from 04_gpt/out, 05_custom/out
 ```
 
 - Docker on macOS runs Linux in a VM with no access to the Apple GPU, so the
@@ -54,7 +60,7 @@ size, `block_size` and best val loss.
 `POST /api/generate` streams Server-Sent Events:
 
 ```json
-{"model": "main", "messages": [{"role": "user", "content": "Good morrow."}],
+{"model": "shakespeare-main", "messages": [{"role": "user", "content": "Good morrow."}],
  "temperature": 0.8, "top_k": null, "max_tokens": 300, "seed": null,
  "user_name": "YOU", "model_name": "BARD"}
 ```

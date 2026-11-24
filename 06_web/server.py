@@ -3,18 +3,26 @@
   python 06_web/server.py               # http://localhost:8000, MPS on the Mac
   python 06_web/server.py --port 8080
 
-Loads every checkpoint found as <MODELS_DIR>/<name>/best.pt (or ckpt.pt when
-there is no best.pt); MODELS_DIR defaults to 04_gpt/out. Serves the chat UI
-from 06_web/static and the API under /api.
+Loads every checkpoint found as <dir>/<run>/best.pt (or ckpt.pt when there
+is no best.pt) for each dir in MODELS_DIR (separated by ":"); the default is
+04_gpt/out (Shakespeare) and 05_custom/out (Franko). Serves the chat UI from
+06_web/static and the API under /api.
 
 The models are base language models, not assistants: a "reply" is the model
-continuing a play-like transcript. Each turn becomes a speech:
+continuing a transcript written the way its training text writes dialogue.
+Shakespeare's is a play, each turn a speech under the speaker's name:
 
     YOU:
     Good morrow, sir.
 
     BARD:
     <the model writes here, until it ends the speech with a blank line>
+
+Franko's prose puts each line of dialogue in its own paragraph after a dash:
+
+    — Добрий день.
+
+    — <the model writes here, until the paragraph ends>
 """
 import argparse
 import asyncio
@@ -32,10 +40,12 @@ from pydantic import BaseModel, Field
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "04_gpt"))
-from data import CharTokenizer  # noqa: E402
+sys.path.insert(0, os.path.join(HERE, "..", "05_custom"))
 from model import GPT, GPTConfig  # noqa: E402
 
-DEFAULT_MODELS_DIR = os.path.join(HERE, "..", "04_gpt", "out")
+from bpe import make_tokenizer  # noqa: E402  (05_custom/bpe.py)
+
+DEFAULT_MODELS_DIRS = [os.path.join(HERE, "..", "04_gpt", "out"), os.path.join(HERE, "..", "05_custom", "out")]
 STATIC_DIR = os.path.join(HERE, "static")
 END_OF_TURN = "\n\n"  # a blank line ends a speech in the training text
 
@@ -46,16 +56,25 @@ def pick_device():
     return "mps" if torch.backends.mps.is_available() else "cpu"
 
 
+# Typing variants the Franko corpus normalized away (05_custom/extract.py).
+FRANKO_INPUT = str.maketrans({"’": "'", "ʼ": "'", "`": "'", "–": "—", "\u00a0": " "})
+
+
 class LoadedModel:
-    def __init__(self, name, path, device):
+    def __init__(self, run, path, device):
         ckpt = torch.load(path, map_location=device, weights_only=False)
-        self.name, self.path = name, path
+        self.path = path
         self.model = GPT(GPTConfig(**ckpt["model_config"])).to(device)
         self.model.load_state_dict(ckpt["model"])
         self.model.eval()
-        # Stage 4 checkpoints carry a character vocabulary; the stage 5 BPE
-        # model will plug in here with its own tokenizer type.
-        self.tokenizer, self.tokenizer_type = CharTokenizer(ckpt["chars"]), "char"
+        # Stage 5 checkpoints describe their tokenizer (char or BPE) and come
+        # from the Franko corpus; stage 4 ones only carry a character list.
+        tok = ckpt.get("tokenizer") or {"type": "char", "chars": ckpt["chars"]}
+        self.tokenizer_type, self.chars = tok["type"], set(tok.get("chars", ()))
+        self.encode, self.decode = make_tokenizer(tok)
+        self.corpus = "franko" if "tokenizer" in ckpt else "shakespeare"
+        self.chat_format = "dialogue" if self.corpus == "franko" else "play"
+        self.name = f"{self.corpus}-{run}"
         self.step, self.val_loss = ckpt.get("step"), ckpt.get("best_val")
         self.device = device
 
@@ -67,6 +86,8 @@ class LoadedModel:
         cfg = self.model.config
         return {
             "name": self.name,
+            "corpus": self.corpus,
+            "chat_format": self.chat_format,
             "params": self.model.num_params(),
             "tokenizer": self.tokenizer_type,
             "vocab_size": cfg.vocab_size,
@@ -78,18 +99,23 @@ class LoadedModel:
             "val_loss": round(self.val_loss, 4) if self.val_loss is not None else None,
         }
 
+    def prepare(self, text):
+        return text.translate(FRANKO_INPUT) if self.corpus == "franko" else text
+
     def unknown_chars(self, text):
-        return sorted(set(text) - set(self.tokenizer.stoi))
+        # A byte-level BPE can encode anything; a character model only its vocabulary.
+        return sorted(set(text) - self.chars) if self.tokenizer_type == "char" else []
 
 
-def load_models(models_dir, device):
+def load_models(models_dirs, device):
     models = {}
-    for d in sorted(glob.glob(os.path.join(models_dir, "*"))):
-        path = next((p for p in (os.path.join(d, "best.pt"), os.path.join(d, "ckpt.pt")) if os.path.exists(p)), None)
-        if path:
-            name = os.path.basename(d)
-            models[name] = LoadedModel(name, path, device)
-            print(f"loaded {name}: {path} ({models[name].model.num_params() / 1e6:.2f}M params, {device})")
+    for models_dir in models_dirs:
+        for d in sorted(glob.glob(os.path.join(models_dir, "*"))):
+            path = next((p for p in (os.path.join(d, "best.pt"), os.path.join(d, "ckpt.pt")) if os.path.exists(p)), None)
+            if path:
+                m = LoadedModel(os.path.basename(d), path, device)
+                models[m.name] = m
+                print(f"loaded {m.name}: {path} ({m.model.num_params() / 1e6:.2f}M params, {m.tokenizer_type}, {device})")
     return models
 
 
@@ -113,28 +139,37 @@ def speech(name, text):
     return f"{name}:\n{text.strip()}{END_OF_TURN}"
 
 
-def build_prompt(req, block_size):
-    """Transcript of the conversation ending with the model's speaker line.
+def dialogue_line(text):
+    return f"— {text.strip().lstrip('—-').strip()}{END_OF_TURN}"
+
+
+def build_prompt(req, block_size, chat_format="play", encode=list):
+    """Token ids of the conversation transcript, ending where the model's
+    next turn starts.
 
     The model sees at most block_size tokens, so the oldest turns are dropped
     first; the newest turn is cut from the left if it alone is too long.
-    Returns (prompt, number of turns kept).
+    Returns (token ids, number of turns kept).
     """
-    header = f"{req.model_name}:\n"
-    turns = [speech(req.user_name if m.role == "user" else req.model_name, m.content) for m in req.messages]
-    kept, length = [], len(header)
+    if chat_format == "dialogue":
+        header, turns = "— ", [dialogue_line(m.content) for m in req.messages]
+    else:
+        header = f"{req.model_name}:\n"
+        turns = [speech(req.user_name if m.role == "user" else req.model_name, m.content) for m in req.messages]
+    kept, length = [], len(encode(header))
     for t in reversed(turns):
-        if length + len(t) > block_size and kept:
+        n = len(encode(t))
+        if length + n > block_size and kept:
             break
         kept.insert(0, t)
-        length += len(t)
-    prompt = "".join(kept) + header
-    return prompt[-block_size:], len(kept)
+        length += n
+    return encode("".join(kept) + header)[-block_size:], len(kept)
 
 
 def create_app(models_dir=None, device=None):
     device = device or pick_device()
-    models = load_models(models_dir or os.environ.get("MODELS_DIR", DEFAULT_MODELS_DIR), device)
+    dirs = (models_dir or os.environ.get("MODELS_DIR", "")).split(":")
+    models = load_models([d for d in dirs if d] or DEFAULT_MODELS_DIRS, device)
     lock = asyncio.Lock()  # one generation at a time: they share one GPU
     app = FastAPI(title="mini-gpt chat")
 
@@ -147,15 +182,18 @@ def create_app(models_dir=None, device=None):
         m = models.get(req.model)
         if m is None:
             raise HTTPException(404, {"error": f"unknown model {req.model!r}", "models": list(models)})
-        text = req.user_name + req.model_name + "".join(msg.content for msg in req.messages)
+        for msg in req.messages:
+            msg.content = m.prepare(msg.content)
+        names = req.user_name + req.model_name if m.chat_format == "play" else ""
+        text = names + "".join(msg.content for msg in req.messages)
         unknown = m.unknown_chars(text)
         if unknown:
             raise HTTPException(400, {
                 "error": f"the {req.model} model doesn't know these characters: {' '.join(map(repr, unknown))}",
                 "unknown_chars": unknown,
             })
-        prompt, turns_kept = build_prompt(req, m.block_size)
-        context = torch.tensor([m.tokenizer.encode(prompt)], dtype=torch.long, device=device)
+        ids, turns_kept = build_prompt(req, m.block_size, m.chat_format, m.encode)
+        context = torch.tensor([ids], dtype=torch.long, device=device)
         generator = torch.Generator().manual_seed(req.seed) if req.seed is not None else None
 
         async def events():
@@ -166,7 +204,7 @@ def create_app(models_dir=None, device=None):
                         "turns_kept": turns_kept, "turns_total": len(req.messages)})
             async with lock:
                 stream = m.model.generate_stream(context, req.max_tokens, req.temperature, req.top_k, generator)
-                reply, sent, n, t0, stop = "", 0, 0, time.time(), "max_tokens"
+                tokens, reply, sent, t0, stop = [], "", 0, time.time(), "max_tokens"
                 while True:
                     if await request.is_disconnected():
                         stop = "cancelled"
@@ -174,21 +212,24 @@ def create_app(models_dir=None, device=None):
                     token = await asyncio.to_thread(next, stream, None)  # keep the event loop free
                     if token is None:
                         break
-                    reply += m.tokenizer.decode([token])
-                    n += 1
+                    tokens.append(token)
+                    # Decode the whole reply: a BPE token can be half of a
+                    # 2-byte Cyrillic letter, which decodes only with its other half.
+                    reply = m.decode(tokens)
                     end = reply.find(END_OF_TURN, sent)
                     if end != -1:  # the model finished its speech
                         if end > sent:
                             yield send({"type": "token", "text": reply[sent:end]})
                         stop = "end_of_turn"
                         break
-                    # Hold back trailing newlines: they may turn out to be the end of the turn.
-                    safe = len(reply.rstrip("\n"))
+                    # Hold back trailing newlines (they may turn out to be the end of
+                    # the turn) and an unfinished multi-byte character (decoded as U+FFFD).
+                    safe = len(reply.rstrip("\n\ufffd"))
                     if safe > sent:
                         yield send({"type": "token", "text": reply[sent:safe]})
                         sent = safe
                 stream.close()
-            elapsed = time.time() - t0
+            elapsed, n = time.time() - t0, len(tokens)
             yield send({"type": "done", "stop_reason": stop, "tokens": n,
                         "tokens_per_s": round(n / elapsed, 1) if elapsed > 0 else None,
                         "context_used": min(m.block_size, context.size(1) + n), "block_size": m.block_size})

@@ -97,7 +97,7 @@ $("new-chat").onclick = newChat;
 function renderModels() {
   const box = $("model-list");
   box.replaceChildren();
-  if (!state.models.length) { box.append(el("p", "muted small", "No trained models found in 04_gpt/out/.")); return; }
+  if (!state.models.length) { box.append(el("p", "muted small", "No trained models found in 04_gpt/out/ or 05_custom/out/.")); return; }
   state.models.forEach((m, i) => {
     const b = el("button", "model-card" + (m.name === state.settings.model ? " active" : ""));
     b.style.setProperty("--c", `var(--${["yellow", "green", "teal", "purple"][i % 4]})`);
@@ -212,8 +212,13 @@ function renderMessages() {
 function render() { renderChatList(); renderCrumbs(); renderMessages(); updateContext(); }
 
 // ---------- stats ----------
+const PLACEHOLDERS = {
+  play: "Speak, and the model answers in verse…  (Enter to send, Shift+Enter for a new line)",
+  dialogue: "Скажіть щось, і модель відповість у стилі Франка…  (Enter — надіслати)",
+};
 function updateContext(used) {
   const m = currentModel();
+  $("input").placeholder = PLACEHOLDERS[m?.chat_format] || PLACEHOLDERS.play;
   const fill = $("ctx-fill");
   if (!m) { $("stat-ctx").textContent = "context —"; fill.style.width = "0"; return; }
   if (used == null) used = state.last?.model === m.name ? state.last.context_used : 0;
@@ -259,7 +264,7 @@ async function regenerate() {
 
 async function runGeneration(chat) {
   const m = currentModel();
-  if (!m) { pushError(chat, "No model loaded. Train one first: python 04_gpt/train.py --config small"); return; }
+  if (!m) { pushError(chat, "No model loaded. Train one first: python 04_gpt/train.py --config small or python 05_custom/train.py"); return; }
   const s = state.settings;
   const body = {
     model: m.name,
