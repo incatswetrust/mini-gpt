@@ -21,3 +21,4 @@ logs/
 .vscode/
 .idea/
 out/
+.pytest_cache/

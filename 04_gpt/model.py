@@ -149,8 +149,9 @@ class GPT(nn.Module):
         return logits, loss
 
     @torch.no_grad()
-    def generate(self, idx, max_new_tokens, temperature=1.0, top_k=None, generator=None):
-        """Predict the next token, append it, repeat. idx: (B, T) context.
+    def generate_stream(self, idx, max_new_tokens, temperature=1.0, top_k=None, generator=None):
+        """Predict the next token, append it, repeat; yields each new token id.
+        idx: (1, T) context.
 
         temperature < 1 sharpens the distribution (safer, more repetitive),
         > 1 flattens it (more varied, more mistakes). top_k keeps only the k
@@ -166,4 +167,10 @@ class GPT(nn.Module):
             probs = F.softmax(logits, dim=-1)
             idx_next = torch.multinomial(probs.cpu(), num_samples=1, generator=generator).to(idx.device)
             idx = torch.cat((idx, idx_next), dim=1)
-        return idx
+            yield idx_next.item()
+
+    @torch.no_grad()
+    def generate(self, idx, max_new_tokens, temperature=1.0, top_k=None, generator=None):
+        """Like generate_stream, but returns the whole (1, T + max_new_tokens) sequence."""
+        new = list(self.generate_stream(idx, max_new_tokens, temperature, top_k, generator))
+        return torch.cat((idx, torch.tensor([new], dtype=idx.dtype, device=idx.device)), dim=1)
